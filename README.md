@@ -1,138 +1,145 @@
-# ☁️ Cloud Engineering & DevOps Internship Sandbox
+# django-devops-lab
 
-Bu depo, **Cloud Engineering (Bulut Mühendisliği)** ve **DevOps** staj sürecimde; modern bulut mimarilerini, konteyner orkestrasyonunu (**Docker Swarm**), **Jenkins CI/CD pipeline**'larını, sıfır kesintili güncelleme stratejilerini ve konteyner güvenliğini uygulamalı olarak deneyimlemek ve test etmek amacıyla oluşturulmuştur.
+A Django portfolio app used as a hands-on lab for containerization, Docker Swarm, Jenkins CI/CD, zero-downtime rolling updates, and Kubernetes (Helm, Argo CD, Istio).
 
-Proje, üretim ortamı (production-ready) standartlarında geliştirilen bir **Django** web uygulamasının **Docker Swarm**, **Jenkins**, **Nginx** ve **PostgreSQL** altyapıları üzerinde yüksek erişilebilirlik (High Availability) ile çalıştırılmasını ve otomatik dağıtımını simüle eder.
+## Overview
 
----
+The application itself is intentionally small: a Django site with a landing page and a few JSON endpoints. The value of the repository is the delivery pipeline around it. The same image is packaged with a multi-stage Dockerfile and then run in three ways:
 
-## 🌟 Öne Çıkan Bulut & DevOps Teknolojileri
+1. **Docker Compose** for local development (Django + PostgreSQL + Nginx).
+2. **Docker Swarm** for a replicated, rolling-update deployment driven by a **Jenkins** pipeline.
+3. **Kubernetes** with plain manifests, a Helm chart, and an Argo CD `Application` for GitOps-style sync.
 
-### 🐳 1. Konteyner Orkestrasyonu & Küme Yönetimi (Docker Swarm)
+A separate `socket-app/` experiment tests long-lived WebSocket connections through an Istio ingress gateway.
 
-- **High Availability (Yüksek Erişilebilirlik)**: Web servisinin 3 replika (`replicas: 3`) olarak çalıştırılarak yük dengelemesi ve kesintisiz hizmet sunması.
-- **Zero-Downtime Rolling Updates**: Kesintisiz yayınlama (`order: start-first`, `parallelism: 1`, `delay: 10s`) yapılandırması.
-- **Automatic Healthcheck & Rollback**: HTTP/Database seviyesinde sağlık denetimleri ve başarısız dağıtımlarda otomatik eski sürüme dönme (`failure_action: rollback`).
-- **Overlay Networks**: Servisler arası güvenli ve izole iletişim sağlayan küme ağı (`django-overlay`).
+## What it demonstrates
 
-### ⚙️ 2. CI/CD Pipeline Otomasyonu (Jenkins)
+**Containers**
+- Multi-stage `Dockerfile`: a Node (Alpine) stage for the frontend build, a Python (Alpine) stage that builds wheels, and a slim runtime stage that installs only the prebuilt wheels.
+- Runtime container runs as a non-root `django` user and serves the app with Gunicorn.
 
-- **Bağımsız Jenkins Sunucusu**: Docker Swarm kümesinden ayrı, kendi VM'inde çalışan Jenkins kontrolcüsü.
-- **Multi-Stage Pipeline (`Jenkinsfile`)**: Checkout → Build → Push → Deploy aşamalarından oluşan, kod deposundan (SCM) okunan declarative pipeline.
-- **Otomatik İmaj Etiketleme**: Her build'de artan sürüm etiketi (`v1.0.${BUILD_NUMBER}`) ve `latest` etiketinin birlikte push edilmesi.
-- **Güvenli Kimlik Bilgisi Yönetimi**: Docker Hub kimlik bilgilerinin Jenkins Credentials Store üzerinde şifreli saklanması (`withCredentials`), plaintext şifre kullanılmaması.
-- **Şifresiz SSH Dağıtımı**: Jenkins → Swarm Manager arası `ed25519` SSH anahtarıyla güvenli, interaktif olmayan `scp` / `ssh` tabanlı dağıtım.
+**Docker Swarm** (`docker-stack.yml`)
+- `webapp` service with 3 replicas and `max_replicas_per_node: 2`.
+- Rolling updates: `parallelism: 1`, `delay: 10s`, `order: start-first`, `monitor: 30s`, `failure_action: rollback`.
+- PostgreSQL service with a `pg_isready` healthcheck and a named volume.
+- Docker Secrets for the database password and Django secret key, read from `/run/secrets/` (see `get_secret` in `core/settings.py`; environment variables are used as a fallback outside Swarm).
+- Pre-created external overlay network (`django-overlay`) and an Nginx service whose config is delivered as a Swarm config.
 
-### 🎯 3. Sıfır Kesinti Doğrulaması (Load Testing with Siege)
+**Jenkins CI/CD** (`Jenkinsfile`)
+- Declarative pipeline: Checkout, Build, Push, Deploy to Swarm.
+- Images tagged `v1.0.<BUILD_NUMBER>` and `latest`.
+- Docker Hub credentials come from the Jenkins credentials store (`withCredentials`) and are passed via `--password-stdin`.
+- Deployment copies `docker-stack.yml` to the Swarm manager over SSH and runs `docker stack deploy`.
 
-- **Ateş Altında Test**: Deployment sürerken **Siege** yük testi aracıyla eş zamanlı istek gönderilerek servisin kesintisiz yanıt verdiğinin kanıtlanması.
-- **Availability Metriği**: Testler `%100.00` erişilebilirlik ve `0` başarısız işlem (failed transaction) hedefiyle koşulur.
-- **Gerçek Trafik Simülasyonu**: Test, cluster dışından public IP üzerinden çalıştırılarak gerçek kullanıcı deneyimi simüle edilir.
+**Kubernetes**
+- `k8s/`: Deployment, NodePort Service, PostgreSQL Deployment/Service, ConfigMap and Secret, an NGINX Ingress with a cert-manager self-signed `ClusterIssuer`, and an Ingress for Argo CD.
+- `django-chart/`: Helm chart (Deployment, Service, Ingress, PostgreSQL, HPA, resource requests/limits).
+- `k8s/argo-application.yml`: Argo CD `Application` pulling the chart from a Helm repository, with automated sync, prune and self-heal.
+- Liveness and readiness probes on the Django Deployment.
 
-### 🔒 4. Bulut Güvenliği & Secret Yönetimi (Cloud Security)
+**Istio WebSocket test** (`socket-app/`)
+- A small `websockets` ping/pong server and client, with an Istio `Gateway`/`VirtualService` exposing raw TCP on port 8765 and an `EnvoyFilter` that sets a 30-minute TCP idle timeout. Used to check that a connection stays open for 10+ minutes.
 
-- **Docker Secrets**: Hassas veritabanı parolaları ve gizli anahtarların (`/run/secrets/`) Swarm seviyesinde şifrelenerek yönetilmesi.
-- **Dynamic Secret Resolver**: `core/settings.py` içerisindeki custom `get_secret` mimarisi ile üretimde Docker Secret, yerelde ortam değişkeni (`.env`) kullanımı.
-- **Non-Root Container Security**: Docker konteynerlerinin kısıtlı yetkilere sahip `django` kullanıcısı ile çalıştırılması.
+## Architecture
 
-### 📦 5. Optimize Konteyner Mimari (Multi-Stage Docker Builds)
+```mermaid
+flowchart LR
+    Dev[Developer] -->|git push| GH[GitHub]
+    GH --> J[Jenkins]
+    J -->|docker build + push| DH[(Docker Hub)]
+    J -->|scp + ssh: docker stack deploy| M[Swarm manager]
 
-- **Hafif ve Güvenli İmajlar**: `frontend-builder` (Node.js Alpine) ve `backend-builder` (Python Alpine) aşamalarıyla bağımlılıkların derlenip sadece nihai çıktıların minimal `runtime` imajına taşınması.
+    subgraph Swarm["Docker Swarm (django-overlay network)"]
+        N[Nginx] --> W1[webapp x3]
+        W1 --> PG[(PostgreSQL)]
+        S1[[Docker Secrets]] -.-> W1
+        S1 -.-> PG
+    end
 
-### 🌐 6. Web Sunucusu & Reverse Proxy (Nginx)
+    M --> Swarm
+    DH -.->|image pull| W1
+    U[Client] --> N
+```
 
-- **Trafik Yönlendirme & Yük Dengeleme**: İstemci isteklerinin güvenli bir şekilde backend servislerine yönlendirilmesi.
-- **Statik Dosya Yönetimi**: Django statik dosyalarının (`collectstatic`) Nginx üzerinden yüksek performansla sunulması.
+## Tech stack
 
----
+| Area | Tools |
+| --- | --- |
+| Application | Python 3.11, Django 5.2, Gunicorn, PostgreSQL 16 (SQLite fallback for local use) |
+| Containers | Docker, multi-stage builds, Docker Compose, Alpine Linux |
+| Orchestration | Docker Swarm (stack, secrets, configs, overlay network), Kubernetes, Helm |
+| CI/CD / GitOps | Jenkins (declarative pipeline), Argo CD |
+| Web / proxy | Nginx, NGINX Ingress, cert-manager (self-signed issuer), Istio |
+| Testing | Siege (load test), Python WebSocket client |
 
-## 🛠️ Teknolojik Yanıtlar ve Bileşen Özeti
-
-| Katman                         | Kullanılan Teknolojiler / Araçlar                            |
-| :----------------------------- | :----------------------------------------------------------- |
-| **Cloud & Orchestration**      | Docker Swarm, Docker Stack, Docker Secrets, Overlay Network  |
-| **CI/CD & Automation**         | Jenkins, Jenkinsfile (Declarative Pipeline), Git, SSH        |
-| **Load & Reliability Testing** | Siege, Docker Swarm Healthcheck, Rolling Update              |
-| **Containerization**           | Docker, Multi-stage Builds, Docker Compose, Alpine Linux     |
-| **Web & Reverse Proxy**        | Nginx (Alpine), Gunicorn WSGI Server                         |
-| **Backend & Database**         | Python 3.11, Django 5.x, PostgreSQL 16 (Alpine), SQLite      |
-| **Security & Config**          | Docker Secrets, Dynamic Secret Fallback, Non-root Linux User |
-
----
-
-## 📁 Proje Dizin Yapısı
+## Project structure
 
 ```text
 .
-├── core/                   # Django çekirdek ayarları & Docker Secret resolver (get_secret)
-├── frontend/               # Frontend bağımlılıkları ve derleme konfigürasyonu
-├── nginx/                  # Nginx Reverse Proxy ayarları (nginx.conf)
-├── Dockerfile              # Multi-stage Alpine Docker imajı
-├── docker-compose.yml      # Geliştirme ortamı çoklu konteyner mimarisi
-├── docker-stack.yml        # Docker Swarm üretim/cluster dağıtım konfigürasyonu (healthcheck + update_config)
-├── Jenkinsfile             # Jenkins CI/CD pipeline tanımı (Checkout → Build → Push → Deploy)
-├── requirements.txt        # Python bağımlılıkları
-└── README.md               # Proje dokümantasyonu
+├── core/                  # Django project; settings with Docker Secret resolver
+├── templates/, static/    # Portfolio page
+├── frontend/              # Minimal frontend build stub used by the Dockerfile
+├── nginx/                 # Nginx reverse-proxy config
+├── Dockerfile             # Multi-stage image
+├── docker-compose.yml     # Local development stack
+├── docker-stack.yml       # Swarm stack (replicas, rolling update, secrets)
+├── Jenkinsfile            # CI/CD pipeline
+├── k8s/                   # Plain Kubernetes manifests + Argo CD Application
+├── django-chart/          # Helm chart
+├── socket-app/            # WebSocket ping/pong + Istio TCP gateway experiment
+└── .env.example           # Environment variable template
 ```
 
----
+## Getting started
 
-## 🚀 Dağıtım Seçenekleri (Deployment)
-
-### 1. Docker Swarm Stack ile Production Dağıtımı
+### Local development with Docker Compose
 
 ```bash
-# Swarm kümesini başlatın
-docker swarm init
+cp .env.example .env     # fill in the empty values
+docker compose up --build -d
+```
 
-# Stack servislerini ve gizli anahtarları (secrets) oluşturup yayınlayın
+The site is served through Nginx on port 80. The `web` container runs `migrate` and `collectstatic` before starting Gunicorn.
+
+### Docker Swarm
+
+The stack expects a few resources to exist first (names come from `docker-stack.yml`):
+
+```bash
+docker swarm init
+docker network create --driver overlay django-overlay
+printf '<db-password>'   | docker secret create db_password -
+printf '<django-secret>' | docker secret create django_secret_key -
 docker stack deploy -c docker-stack.yml my-django-stack
 ```
 
-### 2. Docker Compose ile Yerel Geliştirme Ortamı
+The database service is pinned to a node with the hostname `swarm-manager`; adjust the placement constraint for your cluster. The `webapp` image (`ayqutfe/django-multistage`) is pulled from Docker Hub.
+
+### Jenkins pipeline
+
+Create a pipeline job from SCM that uses the `Jenkinsfile`, add a `docker-hub-credentials` username/password credential, and give the Jenkins user SSH access to the Swarm manager. Set `SWARM_MANAGER_IP` and `SWARM_MANAGER_USER` in the `environment` block to match your environment.
+
+### Kubernetes
 
 ```bash
-docker-compose up --build -d
+kubectl apply -f k8s/postgres-config.yml -f k8s/postgres-secret.yml \
+              -f k8s/postgres-deployment.yml -f k8s/postgres-service.yml \
+              -f k8s/django-deployment.yml -f k8s/django-service.yml
 ```
 
-### 3. Jenkins CI/CD ile Otomatik Dağıtım
+Replace the sample values in `k8s/postgres-secret.yml` before using it anywhere other than a throwaway cluster. For the Helm route, `helm install django-app ./django-chart` installs the chart from this directory.
 
-Kod `main` branch'ine push edildiğinde veya Jenkins üzerinden manuel tetiklendiğinde pipeline şu aşamaları otomatik yürütür:
+### Zero-downtime check with Siege
 
-1. **Checkout** — Depo GitHub'dan çekilir.
-2. **Build** — Multi-stage `Dockerfile` ile `vX.Y.${BUILD_NUMBER}` ve `latest` etiketli imaj derlenir.
-3. **Push** — İmaj, Jenkins Credentials Store'daki bilgilerle Docker Hub'a gönderilir.
-4. **Deploy** — Güncel `docker-stack.yml`, SSH üzerinden Swarm Manager'a kopyalanır ve `docker stack deploy` ile devreye alınır; `start-first` + healthcheck sayesinde kesinti yaşanmaz.
+Run a load test from outside the cluster while a new image is being deployed:
 
 ```bash
-# Jenkins arayüzünde ilgili pipeline job'ını manuel tetiklemek için:
-Build Now
+siege -c 10 -t 30s http://<swarm-public-address>/
 ```
 
----
+A passing run shows 100% availability and 0 failed transactions.
 
-## 🧪 Sıfır Kesinti Testi (Zero-Downtime Verification)
+## Notes
 
-Deployment sürerken sistemin kesintisiz çalıştığını doğrulamak için [Siege](https://www.joedog.org/siege-home/) kullanılır:
-
-```bash
-siege -c 10 -t 30s http://<SWARM_PUBLIC_IP>/
-```
-
-**Beklenen sonuç:**
-
-| Metrik              | Hedef     |
-| :------------------ | :-------- |
-| Availability        | `%100.00` |
-| Failed transactions | `0`       |
-
-Test raporunun tam çıktısı `docs/siege-report.txt` (veya ilgili teslim klasörü) altında paylaşılır.
-
----
-
-## 📌 Modül Notları
-
-Bu depo, aşağıdaki modüllerin uygulamalı çıktısını bir arada barındırır:
-
-- **docker-01 → docker-04**: Konteynerleştirme, multi-stage build, Docker Compose ile yerel geliştirme, Docker Swarm ile cluster kurulumu ve secrets yönetimi.
-- **docker-05**: Jenkins ile GitOps pipeline, Swarm'da `start-first` rolling-update + healthcheck mekanizması, Siege ile canlı deployment sırasında sıfır kesinti doğrulaması.
+- The `/api/health/` and `/api/siege-simulate/` endpoints return static demo data for the portfolio page; they do not report live cluster metrics.
+- In `docker-stack.yml` the `webapp` healthcheck is present but commented out; rolling updates currently rely on `monitor: 30s` with `failure_action: rollback`.
