@@ -18,7 +18,7 @@ def home(request):
             'github': 'https://github.com/AyqutEfe',
             'dockerhub': 'https://hub.docker.com/u/ayqutfe',
             'linkedin': 'https://www.linkedin.com/in/aykut-efe-caglayan',
-            'email': 'aykutefecaglayan@gmail.com',
+            'email': 'you@example.com',
             'location': 'Edirne / İstanbul, Türkiye',
             'tubit_title': 'TÜBİT Başkanı (Trakya Üniversitesi Bilişim ve İnovasyon Topluluğu)',
         },

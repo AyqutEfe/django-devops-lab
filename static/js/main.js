@@ -511,7 +511,7 @@ function initTerminal() {
 `,
     contact: () => `
 <div style="color:#38bdf8; font-weight:bold;">Contact & Social Profiles:</div>
-  • <strong>Email:</strong> aykutefecaglayan@gmail.com
+  • <strong>Email:</strong> you@example.com
   • <strong>LinkedIn:</strong> <a href="https://www.linkedin.com/in/aykut-efe-caglayan" target="_blank" style="color:#00f2fe;">linkedin.com/in/aykut-efe-caglayan</a>
   • <strong>GitHub:</strong> <a href="https://github.com/AyqutEfe" target="_blank" style="color:#00f2fe;">github.com/AyqutEfe</a>
   • <strong>Docker Hub:</strong> <a href="https://hub.docker.com/u/ayqutfe" target="_blank" style="color:#00f2fe;">hub.docker.com/u/ayqutfe</a>
@@ -754,7 +754,7 @@ function openResumeModal() {
     modalTag.textContent = "Cloud & DevOps Engineer";
     modalBody.innerHTML = `
       <div style="line-height:1.7;">
-        <p><strong>Email:</strong> aykutefecaglayan@gmail.com | <strong>Location:</strong> Edirne / İstanbul</p>
+        <p><strong>Email:</strong> you@example.com | <strong>Location:</strong> Edirne / İstanbul</p>
         <hr style="border-color:var(--border-subtle); margin: 1rem 0;">
         <h4 style="color:#38bdf8;">Profile Summary:</h4>
         <p>Motivated Cloud & DevOps Engineer with hands-on expertise in Docker Swarm container orchestration, zero-downtime rolling updates, Jenkins CI/CD declarative pipelines, Kubernetes manifests, and Python/Django backend systems. Experienced community president driving tech initiatives.</p>
@@ -828,7 +828,7 @@ function initCopyButtons() {
   const copyBtn = document.getElementById('btn-copy-email');
   if (copyBtn) {
     copyBtn.addEventListener('click', () => {
-      navigator.clipboard.writeText('aykutefecaglayan@gmail.com').then(() => {
+      navigator.clipboard.writeText('you@example.com').then(() => {
         showToast(translations[currentLang]?.email_copied_toast || 'Email copied!');
       });
     });
